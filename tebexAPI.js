@@ -42,6 +42,11 @@ class TebexIntegration {
     }
 
     async executeCommands(player, commands) {
+        if (!player) {
+            console.error('Player is undefined');
+            return;
+        }
+    
         for (const { command, id } of commands) {
             try {
                 const formattedCommand = command.replace('{username}', player.name);
@@ -66,9 +71,15 @@ class TebexIntegration {
 
     async processCommands(tebexId, username, commands, isOnlineCommands) {
         const player = world.getPlayers({ name: username })[0];
+        if (!player) {
+            console.warn(`Player ${username} not found in the world.`);
+            // Handle the case where the player is not found
+            return;
+        }
+    
         const commandIds = commands.map(cmd => cmd.id);
         const storageKey = `${tebexId}_tebex_commands_${isOnlineCommands ? 'online' : 'offline'}`;
-
+    
         if (player) {
             await this.executeCommands(player, commands);
             await this.deleteCommands(commandIds);
@@ -82,16 +93,26 @@ class TebexIntegration {
         try {
             const queueData = await this.makeTebexRequest('/queue');
             const players = queueData?.players ?? [];
-
+    
+            if (players.length === 0) {
+                console.log('No players in the queue.');
+                return;
+            }
+    
             for (const { id: tebexId, name: username } of players) {
+                if (!tebexId || !username) {
+                    console.warn('Invalid player data in queue:', { tebexId, username });
+                    continue;
+                }
+    
                 this.tebexIdToUsername.set(tebexId, username);
-
+    
                 // Process offline commands
                 const offlineData = queueData?.players.find(p => p.id === tebexId);
                 if (offlineData?.commands?.length) {
                     await this.processCommands(tebexId, username, offlineData.commands, false);
                 }
-
+    
                 // Process online commands
                 const onlineData = await this.makeTebexRequest(`/queue/online-commands/${tebexId}`);
                 if (onlineData?.commands?.length) {
